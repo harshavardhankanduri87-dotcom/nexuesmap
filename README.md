@@ -297,4 +297,160 @@ docker compose up --build
     - Backend Maven Tests: **86 of 86 tests passing** (`BUILD SUCCESS`, 0 failures, 0 errors, 0 skipped).
     - Next.js Production Build: **7 of 7 routes compiled successfully** (`npm run build`, 0 errors).
     - Playwright E2E Tests: **13 of 13 tests passing** (`playwright test`, 0 failures).
+- [x] **Phase 10: Deployment, Production Configuration & Final Operations Manual**
+  - **Production Multi-Stage Containerization**:
+    - **Backend (`backend/Dockerfile`)**: Multi-stage build leveraging `maven:3.9.9-eclipse-temurin-21-alpine` for dependency caching and `eclipse-temurin:21-jre-alpine` for a hardened runtime. Configured non-root execution (`nexususer:nexusgroup`), container memory tuning (`-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError`), and automated Actuator healthchecks.
+    - **Frontend (`frontend/Dockerfile`)**: Multi-stage build leveraging `node:20-alpine` with `npm ci`, Next.js standalone output pruning, non-root user (`nextjs:nodejs`), and container healthchecks.
+  - **Docker Compose Production Topology (`docker-compose.yml`)**:
+    - **PostGIS (`postgis/postgis:16-3.4-alpine`)**: Isolated internal container network (`nexus-network`), persistent data volume (`postgis_data`), and `pg_isready` healthcheck. No database ports exposed publicly by default.
+    - **Redis (`redis:7-alpine`)**: Protected mode with required password authentication (`--requirepass`), persistent AOF volume (`redis_data`), and `redis-cli ping` healthcheck. No cache ports exposed publicly by default.
+    - **Spring Boot Backend**: Dependent on healthy PostGIS and Redis services with automatic startup sequencing.
+    - **Next.js Frontend**: Standalone server dependent on healthy backend service.
+    - **Nginx Reverse Proxy (`nginx:1.27-alpine`)**: Edge gateway handling HTTP (80) and HTTPS (443), client payload limits (10MB), Gzip compression, WebSocket STOMP protocol upgrades (`/ws`), and modern security headers.
+  - **Development Override (`docker-compose.dev.yml`)**:
+    - Provides explicit host port bindings (`5432:5432`, `6379:6379`, `8080:8080`, `3000:3000`) for local DBA and development tooling without compromising production isolation.
+  - **Hardened Production Profile (`application-prod.yml`)**:
+    - Disables development features: Hibernate schema changes set to `validate` (strict Flyway migration enforcement), SQL logging disabled, stacktraces and internal error details suppressed.
+    - Parameterizes demo account seeding: demo accounts (`admin@nexus.edu` / `student@nexus.edu`) are disabled by default in production (`nexusmap.demo.seed-accounts=false`).
+    - Configured HikariCP production connection pool (`maximum-pool-size: 25`, `minimum-idle: 5`, leak detection).
+  - **Reverse Proxy & HTTPS Gateway**:
+    - Includes production Nginx configuration (`nginx/nginx.conf` and `nginx/conf.d/default.conf`) with STOMP connection upgrades (`Upgrade` and `Connection "Upgrade"`).
+    - Includes TLS 1.3 / SSL template (`nginx/conf.d/ssl.conf.template`) with HSTS preloading, PFS ciphers, and Let's Encrypt Certbot challenge support.
+  - **Map & Cartography Production Guidelines**:
+    - Configurable raster/vector tile URL (`NEXT_PUBLIC_MAP_TILE_URL`) and visible attribution (`NEXT_PUBLIC_MAP_ATTRIBUTION`).
+    - Dynamic WebSocket URL detection: automatically uses standard port 80/443 when behind Nginx without hardcoding port 8080.
+  - **Continuous Integration Pipeline (`.github/workflows/ci.yml`)**:
+    - Automated GitHub Actions matrix running Java 21 compilation & unit/security tests (86 tests), Node.js 20 frontend compilation & type-checks, and Docker Compose specification validation on every push and pull request.
+
+---
+
+## 📦 Production Deployment & Operations Guide
+
+### 1. Environment Secrets Setup
+Generate high-entropy cryptographic secrets before starting production services:
+
+```bash
+# Generate 256-bit hex secret for JWT signing
+openssl rand -hex 32
+
+# Generate secure database and Redis passwords
+openssl rand -base64 24
+```
+
+Copy the environment template and populate your generated credentials:
+```bash
+cp .env.example .env
+```
+
+Ensure file permissions are restricted:
+```bash
+chmod 600 .env
+```
+
+### 2. Launching Services via Docker Compose
+
+#### Production Mode (Isolated Network, Reverse Proxy on 80/443)
+```bash
+docker compose up -d --build
+```
+
+Verify service health status:
+```bash
+docker compose ps
+```
+*Expected status: All services (`nexusmap-postgis`, `nexusmap-redis`, `nexusmap-backend`, `nexusmap-frontend`, `nexusmap-nginx`) show `Up (healthy)`.*
+
+#### Development Mode (With Host Port Mappings for Debugging)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+#### Stopping Services
+```bash
+# Graceful shutdown (preserves database and cache volumes)
+docker compose down
+
+# Shutdown and wipe all volumes (DANGER: Deletes all database records)
+docker compose down -v
+```
+
+### 3. Database Backup & Disaster Recovery
+
+#### Create a Full PostGIS Spatial Database Backup
+```bash
+docker compose exec -t postgis pg_dump -U nexus_user nexusmap > backup_$(date +%Y%m%d_%H%M%S).sql
+```
+
+#### Restore Database from Backup
+```bash
+docker compose exec -T postgis psql -U nexus_user nexusmap < backup_YYYYMMDD_HHMMSS.sql
+```
+
+#### Running Flyway Migrations Manually
+When operating outside of Spring Boot automatic startup, migrations can be inspected or run via:
+```bash
+docker compose exec backend java -jar app.jar --spring.profiles.active=prod
+```
+
+### 4. Secret Rotation Procedure
+- **Rotating Database Passwords**:
+  1. Update PostgreSQL user password: `ALTER USER nexus_user WITH PASSWORD 'new_password';`
+  2. Update `POSTGRES_PASSWORD` in `.env`.
+  3. Perform rolling container restart: `docker compose restart backend`.
+- **Rotating JWT Signing Secret**:
+  1. Update `JWT_SECRET` in `.env`.
+  2. Restart backend: `docker compose restart backend`.
+  3. Existing tokens will be invalidated; active sessions will be redirected to `/login` to acquire a new token.
+
+---
+
+## 🛠️ Verification & Test Suite Execution
+
+### Backend Test Suite (86 Tests)
+```bash
+cd backend
+./mvnw clean test
+```
+*Covers authentication, PostGIS spatial indexing, geofence enter/dwell/exit transitions, WebSocket STOMP channel authorization, stored XSS sanitization, Ghost Mode server-side privacy, meetup capacity enforcement, and admin analytics.*
+
+### Frontend Production Build Check
+```bash
+cd frontend
+npm run build
+```
+*Compiles all 7 static routes (`/`, `/login`, `/register`, `/admin`, etc.) with standalone output.*
+
+### Playwright End-to-End Suite (13 Tests)
+```bash
+cd frontend
+npx playwright test
+```
+*Executes all 10 core application scenarios with deterministic GPS mocking in headless Chromium.*
+
+### Automated Performance Benchmarking
+```bash
+cd frontend
+npx ts-node tests/performance/benchmark.ts
+```
+*Executes 50 measured iterations per endpoint under local load.*
+
+---
+
+## 🔍 Troubleshooting & Operational FAQ
+
+| Symptom | Probable Cause | Recommended Resolution |
+| :--- | :--- | :--- |
+| **Backend fails on startup with `Connection refused: postgis:5432`** | PostGIS container is still initializing or volume is upgrading | Check `docker compose logs postgis`. Verify `healthcheck` in `docker-compose.yml` is satisfied before backend starts. |
+| **STOMP WebSocket returns 403 Forbidden** | JWT token expired or user is outside geofenced zone boundary | Inspect browser console network frames. Ensure valid `Authorization: Bearer <token>` header is passed during STOMP CONNECT. |
+| **Map shows gray tiles or loads slowly** | Public OpenStreetMap tile rate limits exceeded | Set `NEXT_PUBLIC_MAP_TILE_URL` to a dedicated tile provider (e.g. Mapbox, Stadia Maps, or self-hosted TileServer-GL). |
+| **Browser GPS prompt fails with `Permission denied`** | Origin is not serving over secure HTTPS (or localhost) | Modern browsers restrict Geolocation API to secure contexts (`https://` or `http://localhost`). Deploy with TLS certificates. |
+| **403 Forbidden on `/admin` dashboard** | Authenticated user does not possess `ROLE_ADMIN` role | Log in with administrative credentials or inspect database role: `SELECT role FROM users WHERE email='...';` |
+
+---
+
+## 🌟 Future Roadmap & Architectural Enhancements
+1. **Distributed Rate Limiting**: Migrate in-memory rate limiting to Redis token-bucket keys for horizontal multi-node backend clustering.
+2. **Self-Hosted Vector Tiles**: Deploy a dedicated TileServer-GL container serving OpenMapTiles vector MBTiles for zero external tile dependencies and air-gapped campus deployments.
+3. **WebRTC Spatial Audio**: Establish peer-to-peer WebRTC mesh voice rooms dynamically clustered around active Global Pins and meetups.
+
 
