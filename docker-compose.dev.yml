@@ -1,0 +1,24 @@
+# ==============================================================================
+# NEXUSMAP Development Docker Compose Override (docker-compose.dev.yml)
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# ==============================================================================
+
+services:
+  postgis:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      NEXUSMAP_SEED_DEMO_ACCOUNTS: "true"
+
+  frontend:
+    ports:
+      - "3000:3000"

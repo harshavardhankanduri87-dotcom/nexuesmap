@@ -102,10 +102,16 @@ export const NexusMap: React.FC<NexusMapProps> = ({
     });
 
     // Custom OpenStreetMap Tile Layer with Required Visible Attribution
-    const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    const tileUrl =
+      process.env.NEXT_PUBLIC_MAP_TILE_URL ||
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+    const tileAttribution =
+      process.env.NEXT_PUBLIC_MAP_ATTRIBUTION ||
+      '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
+
+    const osmLayer = L.tileLayer(tileUrl, {
       maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+      attribution: tileAttribution,
       className: isDarkModeTiles ? "dark-tiles" : "",
     });
     osmLayer.addTo(map);

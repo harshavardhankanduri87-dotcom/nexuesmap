@@ -1,0 +1,90 @@
+name: NEXUSMAP CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # Job 1: Backend Verification & Security Regression Suite
+  # ----------------------------------------------------------------------------
+  backend-test:
+    name: Backend Tests & Build (Java 21)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Eclipse Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Compile and Run All Backend Tests
+        working-directory: backend
+        run: |
+          chmod +x mvnw
+          ./mvnw clean test --no-transfer-progress
+
+      - name: Verify Backend Production Package
+        working-directory: backend
+        run: ./mvnw package -DskipTests --no-transfer-progress
+
+  # ----------------------------------------------------------------------------
+  # Job 2: Frontend Linting & Production Build
+  # ----------------------------------------------------------------------------
+  frontend-build:
+    name: Frontend Build & Type Check (Node 20)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Next.js Production Bundle
+        working-directory: frontend
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+          NODE_ENV: production
+
+  # ----------------------------------------------------------------------------
+  # Job 3: Docker Compose Specification Validation
+  # ----------------------------------------------------------------------------
+  docker-compose-validate:
+    name: Docker Compose Syntax & Spec Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare Dummy Environment File for Compose Linting
+        run: |
+          cp .env.example .env
+          sed -i 's/replace_with_strong_db_password_here/ci_test_password_123/g' .env
+          sed -i 's/replace_with_strong_redis_password_here/ci_redis_secret_123/g' .env
+          sed -i 's/replace_with_64_character_hex_hmac_secret_here/404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970/g' .env
+
+      - name: Validate Docker Compose Configuration
+        run: docker compose config

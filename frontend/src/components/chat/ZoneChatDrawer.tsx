@@ -113,9 +113,15 @@ export const ZoneChatDrawer: React.FC<ZoneChatDrawerProps> = ({
     loadMessageHistory(zoneNumericId);
 
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const defaultWsPort =
+      window.location.port === "3000"
+        ? ":8080"
+        : window.location.port
+        ? `:${window.location.port}`
+        : "";
     const wsUrl =
       process.env.NEXT_PUBLIC_WS_URL ||
-      `${wsProtocol}//${window.location.hostname}:8080/ws`;
+      `${wsProtocol}//${window.location.hostname}${defaultWsPort}/ws`;
 
     const token = typeof window !== "undefined" ? localStorage.getItem("nexus_jwt") : null;
     const client = new Client({

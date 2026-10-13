@@ -1,0 +1,80 @@
+# ==============================================================================
+# NEXUSMAP Production Profile Configuration (application-prod.yml)
+# ==============================================================================
+
+server:
+  port: ${PORT:8080}
+  servlet:
+    context-path: /
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgis:5432/nexusmap}
+    username: ${SPRING_DATASOURCE_USERNAME:nexus_user}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: NexusMapHikariPool
+      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:25}
+      minimum-idle: ${HIKARI_MIN_IDLE:5}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+
+  jpa:
+    open-in-view: false
+    database-platform: org.hibernate.spatial.dialect.postgis.PostgisPG95Dialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        generate_statistics: false
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD}
+      timeout: 3000ms
+
+nexusmap:
+  app-name: NEXUSMAP
+  version: 1.0.0
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://nexusmap.edu,https://map.nexusmap.edu}
+  jwt:
+    secret: ${NEXUSMAP_JWT_SECRET}
+    expiration-ms: ${NEXUSMAP_JWT_EXPIRATION_MS:86400000}
+  cookies:
+    secure: ${NEXUSMAP_COOKIES_SECURE:true}
+  demo:
+    seed-accounts: ${NEXUSMAP_SEED_DEMO_ACCOUNTS:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  level:
+    root: INFO
+    com.nexusmap: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.hibernate: WARN
+    org.apache.tomcat: WARN

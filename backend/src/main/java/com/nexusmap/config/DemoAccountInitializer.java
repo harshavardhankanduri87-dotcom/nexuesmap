@@ -5,7 +5,7 @@ import com.nexusmap.model.User;
 import com.nexusmap.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
@@ -23,8 +23,15 @@ public class DemoAccountInitializer implements CommandLineRunner {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
+    @Value("${nexusmap.demo.seed-accounts:true}")
+    private boolean seedAccounts;
+
     @Override
     public void run(String... args) {
+        if (!seedAccounts) {
+            log.info("Demo account seeding is disabled in current configuration.");
+            return;
+        }
         if (!userRepository.existsByEmailIgnoreCase("admin@nexus.edu")) {
             User admin = User.builder()
                 .name("Campus Administrator")

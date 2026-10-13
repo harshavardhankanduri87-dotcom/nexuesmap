@@ -223,9 +223,15 @@ export default function HomePage() {
   // Real-Time Global Pin WebSocket Subscription (/topic/pins)
   useEffect(() => {
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const defaultWsPort =
+      window.location.port === "3000"
+        ? ":8080"
+        : window.location.port
+        ? `:${window.location.port}`
+        : "";
     const wsUrl =
       process.env.NEXT_PUBLIC_WS_URL ||
-      `${wsProtocol}//${window.location.hostname}:8080/ws`;
+      `${wsProtocol}//${window.location.hostname}${defaultWsPort}/ws`;
 
     const client = new Client({
       brokerURL: wsUrl,
